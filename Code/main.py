@@ -13,8 +13,8 @@ df = pd.read_csv(
 
 sensors_df = df[["x1", "y1", "z1", "x2", "y2", "z2", "x3", "y3", "z3", "x4", "y4", "z4", "class"]].copy()
 sensors_df.describe()
-# -
 
+# +
 from sklearn.preprocessing import MinMaxScaler 
 grouped_sensor_data = sensors_df.groupby("class")
 mean_sensor_data = grouped_sensor_data.agg({
@@ -34,14 +34,14 @@ mean_sensor_data = grouped_sensor_data.agg({
 scaler = MinMaxScaler(feature_range=(0,1))
 normalized_mean_data = scaler.fit_transform(mean_sensor_data)
 
-# +
-from sklearn.metrics.pairwise import cosine_similarity
-
 def inverseTransformAndReshape(array):
     return scaler.inverse_transform(np.reshape(array, (1,-1)))
 
+
+# +
+from sklearn.metrics.pairwise import cosine_similarity
+
 def fitness_function(ga_instance, solution, solution_idx):
-#def fitness_function(solution): # for manually running and testing
     c = 0.2
     result = 0
     for i in range(1,4):
@@ -49,7 +49,13 @@ def fitness_function(ga_instance, solution, solution_idx):
     result = (cosine_similarity([np.array(solution)],[normalized_mean_data[0]]) + c*(1 - 0.25*result)) / (1+c)
     return result[0][0]
 
-#print(fitness_function(normalized_mean_data[0]))
+def manual_fitness_function(solution): # for manually running and testing
+    c = 0.2
+    result = 0
+    for i in range(1,4):
+        result += cosine_similarity([np.array(solution)], [normalized_mean_data[i]])
+    result = (cosine_similarity([np.array(solution)],[normalized_mean_data[0]]) + c*(1 - 0.25*result)) / (1+c)
+    return result[0][0]
 
 
 # -
@@ -80,24 +86,28 @@ from scipy.stats import qmc
 
 sampler = qmc.LatinHypercube(d=12)
 initial_pop = sampler.random(n=20)
-# -
+
+# +
+import pygad
 
 ga_instance = pygad.GA(initial_population=initial_pop, #Initial Population with Latin Hypercube Sampling
+                       gene_space={'low':0, 'high':1},
                        num_generations=1000,
                        num_parents_mating=int(0.6*len(normalized_mean_data[0])),
                        fitness_func=fitness_function,
                        #sol_per_pop=20, #For randomized initialization of initial population
                        #num_genes=len(normalized_mean_data[0]), #For randomized initialization of initial population
-                       init_range_low=0,
-                       init_range_high=1,
-                       parent_selection_type="sss",
-                       keep_parents=1,
-                       crossover_type="single_point",
+                       #init_range_low=0,
+                       #init_range_high=1,
+                       parent_selection_type="rws",
+                       keep_elitism=1,
+                       crossover_type="two_points",
                        mutation_type="random",
                        mutation_percent_genes=1,
                        on_generation=early_stopping_callback
                       )
 #ga_instance.run_callbacks.append(early_stopping_callback)
+# -
 
 ga_instance.run()
 
@@ -105,6 +115,5 @@ solution, solution_fitness, solution_idx = ga_instance.best_solution()
 print(f"Values of the best solution:\n{inverseTransformAndReshape(np.array(solution))}")
 print(f"Original mean values for sitting class:\n{inverseTransformAndReshape(normalized_mean_data[0])}")
 print(f"Fitness value of the best solution: {solution_fitness}")
+print(f"Fitness value of original 'sitting' means: {manual_fitness_function(normalized_mean_data[0])}")
 ga_instance.plot_fitness()
-
-ga_instance.initial_population.shape
