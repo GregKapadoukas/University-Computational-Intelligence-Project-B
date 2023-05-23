@@ -11,11 +11,14 @@ df = pd.read_csv(
         decimal=','
 )
 
+#Keep only columns I need
 sensors_df = df[["x1", "y1", "z1", "x2", "y2", "z2", "x3", "y3", "z3", "x4", "y4", "z4", "class"]].copy()
 sensors_df.describe()
 
 # +
 from sklearn.preprocessing import MinMaxScaler 
+
+#Aggregate the data
 grouped_sensor_data = sensors_df.groupby("class")
 mean_sensor_data = grouped_sensor_data.agg({
     "x1":'mean',
@@ -31,9 +34,12 @@ mean_sensor_data = grouped_sensor_data.agg({
     "y4":'mean',
     "z4":'mean'
 })
+
+#MinMax Scale the data
 scaler = MinMaxScaler(feature_range=(0,1))
 normalized_mean_data = scaler.fit_transform(mean_sensor_data)
 
+#Function to inverse transform the data when necessary
 def inverseTransformAndReshape(array):
     return scaler.inverse_transform(np.reshape(array, (1,-1)))
 
@@ -41,16 +47,18 @@ def inverseTransformAndReshape(array):
 # +
 from sklearn.metrics.pairwise import cosine_similarity
 
+c = 0.4
+
+#Fitness function to use with GA
 def fitness_function(ga_instance, solution, solution_idx):
-    c = 0.2
     result = 0
     for i in range(1,4):
         result += cosine_similarity([np.array(solution)], [normalized_mean_data[i]])
     result = (cosine_similarity([np.array(solution)],[normalized_mean_data[0]]) + c*(1 - 0.25*result)) / (1+c)
     return result[0][0]
 
-def manual_fitness_function(solution): # for manually running and testing
-    c = 0.2
+#Used to manually execute the fitness funtion
+def manual_fitness_function(solution):
     result = 0
     for i in range(1,4):
         result += cosine_similarity([np.array(solution)], [normalized_mean_data[i]])
@@ -63,15 +71,11 @@ best_fitness_values = []
 num_of_insignificant_better = []
 num_of_insignificant_better.append(0)
 
+#Stop early when GA converges
 def early_stopping_callback(ga_instance):
     best_fitness_values.append(ga_instance.best_solution()[1])
         
     better_ratio = (best_fitness_values[len(best_fitness_values)-1] / best_fitness_values[len(best_fitness_values)-2]) - 1
-    #print(best_fitness_values[len(best_fitness_values)-1])
-    #print(best_fitness_values[len(best_fitness_values)-2])
-    #print(better_ratio)
-    #print(num_of_insignificant_better[len(num_of_insignificant_better)-1])
-    #print("\n")
     if better_ratio < 0.01 and len(best_fitness_values) > 1:
         num_of_insignificant_better.append(num_of_insignificant_better[len(num_of_insignificant_better)-1] + 1)
     else:
@@ -88,9 +92,10 @@ initial_pop = []
 
 number_generations = 1000
 population_size = 20
-crossover_chance = 0.9
+crossover_chance = 0.6
 mutation_chance = 0.01
 
+#Create initial populations
 for i in range(0,10):
     sampler = qmc.LatinHypercube(d=12)
     initial_pop.append(sampler.random(n=population_size))
@@ -100,6 +105,7 @@ import pygad
 
 ga_instances = []
 
+#Define GA instances
 for i in range(0,10):
     ga_instance = pygad.GA(initial_population=initial_pop[i], #Initial Population with Latin Hypercube Sampling
                        gene_space={'low':0, 'high':1},
@@ -119,7 +125,6 @@ for i in range(0,10):
                        on_generation=early_stopping_callback
                       )
     ga_instances.append(ga_instance)
-#ga_instance.run_callbacks.append(early_stopping_callback)
 
 # +
 best_fitness_per_generation_per_execution = []
@@ -127,6 +132,7 @@ number_of_generations_per_execution = []
 best_values_per_execution = []
 best_fitness_per_execution = []
 
+#Print results for every instance
 print(f"Original mean values for 'sitting' class:\n{inverseTransformAndReshape(normalized_mean_data[0])}")
 print(f"Fitness value of original 'sitting' means: {manual_fitness_function(normalized_mean_data[0])}\n")
 
@@ -151,6 +157,8 @@ print(f"Mean fitness of best solution for all executions: {np.array(best_fitness
 
 # +
 from matplotlib import pyplot as plt
+
+#Show graphs for every instance
 best_fitness_per_generation_means = np.array(best_fitness_per_generation_per_execution)
 best_fitness_per_generation_means = np.nanmean(best_fitness_per_generation_means, axis=0)
 

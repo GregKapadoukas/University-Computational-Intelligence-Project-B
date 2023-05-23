@@ -11,12 +11,14 @@ df = pd.read_csv(
         decimal=','
 )
 
+#Keep only columns I need
 sensors_df = df[["x1", "y1", "z1", "x2", "y2", "z2", "x3", "y3", "z3", "x4", "y4", "z4", "class"]].copy()
 sensors_df.describe()
-sensors_df[sensors_df['class'] == 'sitting']
 
 # +
 from sklearn.preprocessing import MinMaxScaler 
+
+#Aggregate the data
 grouped_sensor_data = sensors_df.groupby("class")
 mean_sensor_data = grouped_sensor_data.agg({
     "x1":'mean',
@@ -32,9 +34,12 @@ mean_sensor_data = grouped_sensor_data.agg({
     "y4":'mean',
     "z4":'mean'
 })
+
+#MinMax Scale the data
 scaler = MinMaxScaler(feature_range=(0,1))
 normalized_mean_data = scaler.fit_transform(mean_sensor_data)
 
+#Function to inverse transform the data when necessary
 def inverseTransformAndReshape(array):
     return scaler.inverse_transform(np.reshape(array, (1,-1)))
 
@@ -42,8 +47,9 @@ def inverseTransformAndReshape(array):
 # +
 from sklearn.metrics.pairwise import cosine_similarity
 
-c = 0.5
+c = 0.4
 
+#Fitness funtion to use with GA
 def fitness_function(ga_instance, solution, solution_idx):
     result = 0
     for i in range(1,4):
@@ -51,7 +57,8 @@ def fitness_function(ga_instance, solution, solution_idx):
     result = (cosine_similarity([np.array(solution)],[normalized_mean_data[0]]) + c*(1 - 0.25*result)) / (1+c)
     return result[0][0]
 
-def manual_fitness_function(solution): # for manually running and testing
+#Used to manually execute the fitness function
+def manual_fitness_function(solution):
     result = 0
     for i in range(1,4):
         result += cosine_similarity([np.array(solution)], [normalized_mean_data[i]])
@@ -64,21 +71,17 @@ best_fitness_values = []
 num_of_insignificant_better = []
 num_of_insignificant_better.append(0)
 
+#Stop early when GA converges
 def early_stopping_callback(ga_instance):
     best_fitness_values.append(ga_instance.best_solution()[1])
         
     better_ratio = (best_fitness_values[len(best_fitness_values)-1] / best_fitness_values[len(best_fitness_values)-2]) - 1
-    #print(best_fitness_values[len(best_fitness_values)-1])
-    #print(best_fitness_values[len(best_fitness_values)-2])
-    #print(better_ratio)
-    #print(num_of_insignificant_better[len(num_of_insignificant_better)-1])
-    #print("\n")
     if better_ratio < 0.01 and len(best_fitness_values) > 1:
         num_of_insignificant_better.append(num_of_insignificant_better[len(num_of_insignificant_better)-1] + 1)
     else:
         num_of_insignificant_better.append(0)
     
-    if num_of_insignificant_better[len(num_of_insignificant_better)-1] == 500:
+    if num_of_insignificant_better[len(num_of_insignificant_better)-1] == 100:
         return "stop"
 
 
@@ -89,9 +92,10 @@ initial_pop = []
 
 number_generations = 1000
 population_size = 20
-crossover_chance = 0.9
-mutation_chance = 0.10
+crossover_chance = 0.6
+mutation_chance = 0.01
 
+#Create initial populations
 for i in range(0,10):
     sampler = qmc.LatinHypercube(d=12)
     initial_pop.append(sampler.random(n=population_size))
@@ -101,6 +105,7 @@ import pygad
 
 ga_instances = []
 
+#Define GA instances
 for i in range(0,10):
     ga_instance = pygad.GA(initial_population=initial_pop[i], #Initial Population with Latin Hypercube Sampling
                        gene_space={'low':0, 'high':1},
@@ -120,7 +125,6 @@ for i in range(0,10):
                        on_generation=early_stopping_callback
                       )
     ga_instances.append(ga_instance)
-#ga_instance.run_callbacks.append(early_stopping_callback)
 
 # +
 best_fitness_per_generation_per_execution = []
@@ -128,6 +132,7 @@ number_of_generations_per_execution = []
 best_values_per_execution = []
 best_fitness_per_execution = []
 
+#Print results for every instance
 print(f"Original mean values for 'sitting' class:\n{inverseTransformAndReshape(normalized_mean_data[0])}")
 print(f"Fitness value of original 'sitting' means: {manual_fitness_function(normalized_mean_data[0])}\n")
 
@@ -153,6 +158,7 @@ print(f"Mean fitness of best solution for all executions: {np.array(best_fitness
 # +
 from matplotlib import pyplot as plt
 
+#Show graphs for every instance
 best_fitness_per_generation_means = np.array(best_fitness_per_generation_per_execution)
 best_fitness_per_generation_means = np.nanmean(best_fitness_per_generation_means, axis=0)
 
@@ -196,7 +202,8 @@ from tensorflow import keras
 from keras import layers
 from sklearn.model_selection import train_test_split
 
-np_best_values_per_execution = np.array(best_values_per_execution)
+#Copy best values for GAs for scaling
+scaled_best_values_per_execution = np.array(best_values_per_execution)
 
 sensor_measurements = sensors_df.copy()
 sensor_classes = sensor_measurements.pop("class")
@@ -204,14 +211,14 @@ sensor_classes = sensor_measurements.pop("class")
 # One-hot encode output to use in the model later
 sensor_classes = pd.get_dummies(df['class'])
 
-# Standardization of input data
-sensor_measurements = pd.concat([sensor_measurements,pd.DataFrame(np_best_values_per_execution, columns=list(sensor_measurements))])
+# Standardization of input data and best GA output data
+sensor_measurements = pd.concat([sensor_measurements,pd.DataFrame(scaled_best_values_per_execution, columns=list(sensor_measurements))])
 for column in sensor_measurements.columns:
     sensor_measurements[column] = (sensor_measurements[column] - sensor_measurements[column].mean()) / (sensor_measurements[column].std())    
     
 pandas_best_values_per_execution = sensor_measurements[165632:]
 sensor_measurements = sensor_measurements[:165632]
-np_best_values_per_execution = pandas_best_values_per_execution.to_numpy()
+scaled_best_values_per_execution = pandas_best_values_per_execution.to_numpy()
 
 #Set number of neurons in hidden layers and number of max epochs
 num_l1_hidden_neurons = 23
@@ -260,13 +267,12 @@ model_evaluate_history = model.evaluate(validation_measurements, validation_clas
 # +
 from sklearn.preprocessing import StandardScaler 
 
+#Find execution with higest fitness to enter in report
 print(f"The execution with the highest fitness was: {best_fitness_per_execution.index(max(best_fitness_per_execution))+1}\n")
 
-scaler = StandardScaler()
-scaled_results = scaler.fit_transform(np.array(best_values_per_execution))
-
+#Print NN results with GA outputs as inputs
 i = 1
-for result in np_best_values_per_execution:
+for result in scaled_best_values_per_execution:
     #print(model.predict(np.reshape(result, (1, -1))))
     #results_classes.append(model.predict(np.reshape(result, (1, -1))))
     print(f"Results from execution {i}")
