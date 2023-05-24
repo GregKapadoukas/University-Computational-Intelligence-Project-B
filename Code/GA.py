@@ -121,7 +121,10 @@ for i in range(0,10):
                        keep_elitism=1,
                        crossover_type="two_points",
                        mutation_type="random",
+                       random_mutation_min_val=0,
+                       random_mutation_max_val=1,
                        mutation_probability=mutation_chance,
+                       mutation_by_replacement=True, #Replace gene with random value, so gene_space is enforced
                        on_generation=early_stopping_callback
                       )
     ga_instances.append(ga_instance)
